@@ -5,8 +5,8 @@ marketing: answering the same DM for the hundredth time, triaging enquiries,
 and chasing the follow-ups that quietly never happen.
 
 Built by [Kaella Studio](https://kaellastudio.com). Every workflow here is
-importable, commented, and runs on synthetic data — **no client data, no
-client names, no real credentials**.
+importable, commented, and runs on synthetic data. **No client data, no
+client names, no real credentials.**
 
 ---
 
@@ -44,7 +44,7 @@ thread sees it worked.
 - **One DM per person per day**, checked against a sheet before sending. Meta
   restricts accounts that message the same user repeatedly.
 - **The webhook acknowledges Meta immediately** on a separate branch. Meta
-  requires a 200 within five seconds and retries if it does not get one —
+  requires a 200 within five seconds and retries if it does not get one,
   which means duplicate DMs if you do the work first and respond after.
 
 **Honest limits.** Instagram Private Replies work **once per comment**, and
@@ -121,9 +121,9 @@ Requires an n8n instance (self-hosted or cloud) on a recent version.
 2. **Add credentials.** Every node needing auth is left unconfigured on
    purpose. Nothing here contains a key, and nothing should.
 3. **Replace the placeholders.** Search each workflow for:
-   - `SHEET_ID_HERE` — your Google Sheet ID
-   - `IG_BUSINESS_ID` — set as an n8n environment variable, not pasted inline
-   - `#enquiries` — your Slack channel
+   - `SHEET_ID_HERE`, your Google Sheet ID
+   - `IG_BUSINESS_ID`, set as an n8n environment variable, not pasted inline
+   - `#enquiries`, your Slack channel
 4. **Test on pinned data first.** Both workflows send real messages to real
    people the moment they fire. Pin sample data onto the trigger node and run
    it manually before you activate anything.
