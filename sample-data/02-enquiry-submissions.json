@@ -1,0 +1,38 @@
+[
+  {
+    "_comment": "Strong fit — should classify social/strong and reach Slack + auto-reply.",
+    "name": "Sample Founder",
+    "email": "hello@example-brand.test",
+    "brand": "Example Skincare",
+    "budget": "1000-1500",
+    "message": "We are a three-person skincare brand in Bristol. Instagram goes quiet whenever we have a launch on, which is exactly when it should not. Looking for someone to own content for two platforms.",
+    "website": ""
+  },
+  {
+    "_comment": "Poor fit — an agency pitching. Should route to bin, no auto-reply.",
+    "name": "Sample Agency",
+    "email": "sales@example-agency.test",
+    "brand": "",
+    "budget": "",
+    "message": "Hi there! We are a leading digital marketing agency offering SEO and link building at unbeatable rates. Can we book 15 minutes?",
+    "website": ""
+  },
+  {
+    "_comment": "Honeypot tripped — a bot filled the hidden field. Must be dropped before the LLM call.",
+    "name": "Sample Bot",
+    "email": "bot@example.test",
+    "brand": "",
+    "budget": "",
+    "message": "cheap watches",
+    "website": "http://spam.example.test"
+  },
+  {
+    "_comment": "Ambiguous — should classify unclear/possible and still reach a human.",
+    "name": "Sample Enquirer",
+    "email": "someone@example.test",
+    "brand": "Example Baby Co",
+    "budget": "not sure yet",
+    "message": "Hi, saw your site. Not totally sure what we need, just know I am drowning. Can we talk?",
+    "website": ""
+  }
+]

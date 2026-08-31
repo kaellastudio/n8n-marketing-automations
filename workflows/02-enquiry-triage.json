@@ -1,0 +1,145 @@
+{
+  "name": "Enquiry triage — classify, route, acknowledge",
+  "nodes": [
+    {
+      "parameters": { "httpMethod": "POST", "path": "enquiry", "responseMode": "lastNode", "options": {} },
+      "id": "form-webhook",
+      "name": "Enquiry form",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-460, 300],
+      "webhookId": "enquiry"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Trim, lowercase the email, and drop the obvious bots before they cost an\n// LLM call. The honeypot is a hidden form field a human never fills in.\nconst out = [];\nfor (const item of $input.all()) {\n  const b = item.json.body ?? item.json;\n  if ((b.website ?? '').trim() !== '') continue;          // honeypot tripped\n  const email = (b.email ?? '').trim().toLowerCase();\n  if (!/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(email)) continue;\n  out.push({ json: {\n    name: (b.name ?? '').trim(),\n    email,\n    brand: (b.brand ?? '').trim(),\n    message: (b.message ?? '').trim().slice(0, 4000),\n    budget: (b.budget ?? '').trim(),\n    submittedAt: new Date().toISOString()\n  }});\n}\nreturn out;"
+      },
+      "id": "clean",
+      "name": "Clean and drop bots",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-240, 300]
+    },
+    {
+      "parameters": {
+        "modelId": { "__rl": true, "value": "gpt-4o-mini", "mode": "list" },
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You triage inbound enquiries for a one-person studio offering social media management, AI automation and executive support to small beauty and lifestyle brands.\n\nReturn ONLY minified JSON, no markdown fence, matching:\n{\"service\":\"social\"|\"automation\"|\"exec\"|\"unclear\",\"fit\":\"strong\"|\"possible\"|\"poor\",\"urgency\":\"high\"|\"normal\",\"reason\":\"<12 words\"}\n\nfit is \"poor\" when the enquiry is spam, a job application, an agency pitching services, or clearly outside those three offerings. Never invent detail that is not in the message."
+            },
+            { "role": "user", "content": "=Brand: {{ $json.brand }}\nBudget: {{ $json.budget }}\nMessage: {{ $json.message }}" }
+          ]
+        },
+        "jsonOutput": true,
+        "options": { "temperature": 0 }
+      },
+      "id": "classify",
+      "name": "Classify enquiry",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [-20, 300],
+      "onError": "continueRegularOutput",
+      "notes": "temperature 0 so the same enquiry classifies the same way twice. onError continues: a model outage must not silently swallow a lead."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge the model's verdict back onto the enquiry. If the model failed or\n// returned something unparseable, fall back to \"unclear\" and route to the\n// human. Losing a lead to a bad JSON parse is the worst outcome here.\nconst out = [];\nfor (const item of $input.all()) {\n  const enquiry = $('Clean and drop bots').first().json;\n  let verdict = { service: 'unclear', fit: 'possible', urgency: 'normal', reason: 'classifier unavailable' };\n  try {\n    const raw = item.json.message?.content ?? item.json.content ?? item.json;\n    verdict = typeof raw === 'string' ? JSON.parse(raw) : raw;\n  } catch (e) { /* keep the fallback */ }\n  out.push({ json: { ...enquiry, ...verdict } });\n}\nreturn out;"
+      },
+      "id": "merge",
+      "name": "Merge verdict",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            { "conditions": { "options": { "caseSensitive": true, "typeValidation": "loose", "version": 2 }, "conditions": [{ "leftValue": "={{ $json.fit }}", "rightValue": "poor", "operator": { "type": "string", "operation": "equals" } }], "combinator": "and" }, "outputKey": "bin" },
+            { "conditions": { "options": { "caseSensitive": true, "typeValidation": "loose", "version": 2 }, "conditions": [{ "leftValue": "={{ $json.fit }}", "rightValue": "strong", "operator": { "type": "string", "operation": "equals" } }], "combinator": "and" }, "outputKey": "hot" }
+          ]
+        },
+        "options": { "fallbackOutput": "extra", "renameFallbackOutput": "review" }
+      },
+      "id": "route",
+      "name": "Route by fit",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [420, 300]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.email }}",
+        "subject": "=Thanks for getting in touch, {{ $json.name.split(' ')[0] }}",
+        "emailType": "text",
+        "message": "=Hi {{ $json.name.split(' ')[0] }},\n\nThanks for writing about {{ $json.brand }}. I have read it properly and I will come back to you with something useful within one working day.\n\nI take two clients at a time, so if there is a slot the next step is a short call.\n\nKaella\nkaellastudio.com",
+        "options": {}
+      },
+      "id": "ack",
+      "name": "Acknowledge sender",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [660, 200],
+      "notes": "Deliberately says one working day, not an hour. Never promise a response time the person cannot keep."
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": { "__rl": true, "value": "#enquiries", "mode": "name" },
+        "text": "=*{{ $json.fit === 'strong' ? 'Strong fit' : 'Needs a look' }}* — {{ $json.brand || 'no brand given' }}\n{{ $json.name }} <{{ $json.email }}>\nService: {{ $json.service }} · Urgency: {{ $json.urgency }}\nWhy: {{ $json.reason }}\n\n>{{ $json.message.slice(0, 300) }}",
+        "otherOptions": {}
+      },
+      "id": "notify",
+      "name": "Notify Slack",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [660, 380]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": { "__rl": true, "value": "SHEET_ID_HERE", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "enquiries", "mode": "name" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "submittedAt": "={{ $json.submittedAt }}",
+            "name": "={{ $json.name }}",
+            "email": "={{ $json.email }}",
+            "brand": "={{ $json.brand }}",
+            "service": "={{ $json.service }}",
+            "fit": "={{ $json.fit }}",
+            "reason": "={{ $json.reason }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "log",
+      "name": "Log enquiry",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [900, 380]
+    }
+  ],
+  "connections": {
+    "Enquiry form": { "main": [[{ "node": "Clean and drop bots", "type": "main", "index": 0 }]] },
+    "Clean and drop bots": { "main": [[{ "node": "Classify enquiry", "type": "main", "index": 0 }]] },
+    "Classify enquiry": { "main": [[{ "node": "Merge verdict", "type": "main", "index": 0 }]] },
+    "Merge verdict": { "main": [[{ "node": "Route by fit", "type": "main", "index": 0 }]] },
+    "Route by fit": {
+      "main": [
+        [{ "node": "Log enquiry", "type": "main", "index": 0 }],
+        [{ "node": "Acknowledge sender", "type": "main", "index": 0 }, { "node": "Notify Slack", "type": "main", "index": 0 }],
+        [{ "node": "Notify Slack", "type": "main", "index": 0 }]
+      ]
+    },
+    "Acknowledge sender": { "main": [[{ "node": "Log enquiry", "type": "main", "index": 0 }]] },
+    "Notify Slack": { "main": [[{ "node": "Log enquiry", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "pinData": {},
+  "meta": { "instanceId": "kaella-studio-sample" },
+  "tags": [{ "name": "lead-routing" }, { "name": "ai" }]
+}

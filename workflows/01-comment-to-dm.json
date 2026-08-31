@@ -1,0 +1,163 @@
+{
+  "name": "Comment to DM — keyword triggered",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ig-comment",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-ig-comment",
+      "name": "Meta webhook (comment)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-460, 300],
+      "webhookId": "ig-comment"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "EVENT_RECEIVED",
+        "options": {}
+      },
+      "id": "respond-200",
+      "name": "Ack Meta within 5s",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [-240, 120]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Meta batches events. Flatten to one item per comment, and drop\n// anything that is not a comment (edits, likes, echoes of our own replies).\nconst out = [];\nfor (const item of $input.all()) {\n  const body = item.json.body ?? item.json;\n  for (const entry of body.entry ?? []) {\n    for (const change of entry.changes ?? []) {\n      if (change.field !== 'comments') continue;\n      const v = change.value ?? {};\n      // Our own replies come back through the same webhook. Without this the\n      // workflow answers itself, forever.\n      if (v.from?.id && v.from.id === $env.IG_BUSINESS_ID) continue;\n      out.push({\n        json: {\n          commentId: v.id,\n          mediaId: v.media?.id,\n          text: (v.text ?? '').trim(),\n          fromId: v.from?.id,\n          username: v.from?.username,\n          receivedAt: new Date().toISOString()\n        }\n      });\n    }\n  }\n}\nreturn out;"
+      },
+      "id": "normalise",
+      "name": "Flatten and de-echo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-240, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Keyword table. Whole-word match, case-insensitive, so \"guiding\" does not\n// trigger the \"GUIDE\" rule. Longest keyword wins when two match.\nconst RULES = [\n  { keyword: 'GUIDE',  link: 'https://example.com/skin-guide',   reply: 'Sent it over. Check your DMs.' },\n  { keyword: 'PRICES', link: 'https://example.com/pricing',      reply: 'Prices are in your DMs.' },\n  { keyword: 'RESTOCK',link: 'https://example.com/restock-alert',reply: 'Popped the restock link in your DMs.' }\n];\nconst out = [];\nfor (const item of $input.all()) {\n  const text = item.json.text ?? '';\n  const hits = RULES.filter(r => new RegExp(`\\\\b${r.keyword}\\\\b`, 'i').test(text))\n                    .sort((a, b) => b.keyword.length - a.keyword.length);\n  if (!hits.length) continue;\n  out.push({ json: { ...item.json, matched: hits[0].keyword, link: hits[0].link, publicReply: hits[0].reply } });\n}\nreturn out;"
+      },
+      "id": "match-keyword",
+      "name": "Match keyword",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-20, 400]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "documentId": { "__rl": true, "value": "SHEET_ID_HERE", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "sent-log", "mode": "name" },
+        "filtersUI": { "values": [{ "lookupColumn": "fromId", "lookupValue": "={{ $json.fromId }}" }] },
+        "options": {}
+      },
+      "id": "check-log",
+      "name": "Already messaged today?",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [200, 400],
+      "alwaysOutputData": true,
+      "notes": "Rate limit per person. Meta suspends accounts that DM the same user repeatedly."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose", "version": 2 },
+          "conditions": [
+            {
+              "id": "not-sent-today",
+              "leftValue": "={{ $json.sentAt ? $json.sentAt.slice(0,10) : '' }}",
+              "rightValue": "={{ $now.format('yyyy-MM-dd') }}",
+              "operator": { "type": "string", "operation": "notEquals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-fresh",
+      "name": "Not already sent",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [420, 400]
+    },
+    {
+      "parameters": {
+        "graphApiVersion": "v21.0",
+        "hostUrl": "graph.facebook.com",
+        "httpRequestMethod": "POST",
+        "node": "={{ $env.IG_BUSINESS_ID }}/messages",
+        "options": {},
+        "sendBody": true,
+        "bodyParametersUi": {
+          "parameter": [
+            { "name": "recipient", "value": "={{ JSON.stringify({ comment_id: $json.commentId }) }}" },
+            { "name": "message", "value": "={{ JSON.stringify({ text: 'Here you go: ' + $json.link }) }}" }
+          ]
+        }
+      },
+      "id": "send-dm",
+      "name": "Send private reply (DM)",
+      "type": "n8n-nodes-base.facebookGraphApi",
+      "typeVersion": 1,
+      "position": [660, 300],
+      "notes": "Private Replies only work once per comment and only within 7 days of it."
+    },
+    {
+      "parameters": {
+        "graphApiVersion": "v21.0",
+        "hostUrl": "graph.facebook.com",
+        "httpRequestMethod": "POST",
+        "node": "={{ $json.commentId }}/replies",
+        "options": {},
+        "sendBody": true,
+        "bodyParametersUi": { "parameter": [{ "name": "message", "value": "={{ $json.publicReply }}" }] }
+      },
+      "id": "public-reply",
+      "name": "Public reply under comment",
+      "type": "n8n-nodes-base.facebookGraphApi",
+      "typeVersion": 1,
+      "position": [660, 480],
+      "notes": "Social proof. Other people reading the comments see it worked."
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": { "__rl": true, "value": "SHEET_ID_HERE", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "sent-log", "mode": "name" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "fromId": "={{ $json.fromId }}",
+            "username": "={{ $json.username }}",
+            "matched": "={{ $json.matched }}",
+            "commentId": "={{ $json.commentId }}",
+            "sentAt": "={{ $now.toISO() }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "log-sent",
+      "name": "Log to sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [900, 400]
+    }
+  ],
+  "connections": {
+    "Meta webhook (comment)": { "main": [[{ "node": "Ack Meta within 5s", "type": "main", "index": 0 }, { "node": "Flatten and de-echo", "type": "main", "index": 0 }]] },
+    "Flatten and de-echo": { "main": [[{ "node": "Match keyword", "type": "main", "index": 0 }]] },
+    "Match keyword": { "main": [[{ "node": "Already messaged today?", "type": "main", "index": 0 }]] },
+    "Already messaged today?": { "main": [[{ "node": "Not already sent", "type": "main", "index": 0 }]] },
+    "Not already sent": { "main": [[{ "node": "Send private reply (DM)", "type": "main", "index": 0 }, { "node": "Public reply under comment", "type": "main", "index": 0 }], []] },
+    "Send private reply (DM)": { "main": [[{ "node": "Log to sheet", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "pinData": {},
+  "meta": { "instanceId": "kaella-studio-sample" },
+  "tags": [{ "name": "instagram" }, { "name": "lead-capture" }]
+}
