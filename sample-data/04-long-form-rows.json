@@ -1,0 +1,14 @@
+{
+  "_comment": "Synthetic rows from the 'long-form' sheet. Includes the awkward cases: a row already marked done, and one too short to be worth a model call.",
+  "_cases": [
+    { "case": "normal — long enough, unprocessed, should be repurposed",
+      "rowId": "LF-01", "title": "Why we reformulated the barrier serum", "status": "",
+      "body": "We changed the barrier serum this spring and a few of you have asked why, so here is the honest version. The first formula worked, but it pilled under sunscreen. That is not a small complaint when the whole point is that you can wear it every morning. We spent four months on the texture rather than the actives, because the actives were never the problem. The new version absorbs in about forty seconds and layers cleanly under every SPF we tested it with. It costs us slightly more to make and we have kept the price the same." },
+    { "case": "already done — must be skipped so it is not reprocessed and re-billed",
+      "rowId": "LF-02", "title": "Our packaging change", "status": "done",
+      "body": "We moved to recyclable mono-material cartons this year after eighteen months of testing, and the switch turned out to be more complicated than the sustainability brochures suggest. Here is what we learned along the way and what we would do differently if we started again from the beginning today." },
+    { "case": "too short — under 200 characters, should never reach the model",
+      "rowId": "LF-03", "title": "Restock", "status": "",
+      "body": "The lip oil is back in stock." }
+  ]
+}

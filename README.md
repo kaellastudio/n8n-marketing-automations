@@ -22,7 +22,8 @@ So each workflow closes one gap where a slow human response costs money.
 |---|---|---|
 | [Comment to DM](workflows/01-comment-to-dm.json) | Comment at midnight, reply at nine | Instagram comment webhook |
 | [Enquiry triage](workflows/02-enquiry-triage.json) | Good leads buried under spam | Form submission |
-| Review request follow-up | Nobody asks, so nobody reviews | *in progress* |
+| [Review request](workflows/03-review-request.json) | Nobody asks, so nobody reviews | Delivery webhook + hourly sweep |
+| [Content repurposing](workflows/04-content-repurposing.json) | One good post used once | Every 6 hours |
 
 ---
 
@@ -67,6 +68,49 @@ have looked at your inbox.
 - **The auto-reply promises one working day**, not one hour. An automation
   that writes cheques the human cannot cash is worse than no automation.
 
+## 03 · Review request
+
+An order is delivered, seven days pass, and the customer gets one email asking
+how they are getting on. Never twice.
+
+- **Duplicate delivery events are expected.** Carriers re-send them, sometimes
+  days apart. The queue upserts on order ID rather than appending, so the same
+  order overwrites its own row instead of creating a second one and a second
+  email.
+- **The sweep runs hourly, not daily**, so each recipient can be sent inside
+  *their* civil hours. A 10am London send is 8pm in Sydney. The check reads the
+  customer's own timezone, and an unrecognised one is treated as sendable
+  rather than stranding that row forever.
+- **Four separate reasons not to send**, checked one at a time rather than
+  folded into one clever condition: already sent, on the suppression list,
+  still inside the wait, or the wrong hour where they are. Each one is a real
+  complaint if you get it wrong.
+- **The email offers a fix before it asks for a review**, and carries a
+  one-click opt out. Asking an unhappy customer for a public review is how you
+  buy a one-star.
+- **The row is marked sent immediately after sending**, so a crash mid-run
+  cannot re-send on the next sweep.
+
+## 04 · Content repurposing
+
+One long-form post becomes an Instagram caption, a LinkedIn post and a TikTok
+hook, written back to the same sheet.
+
+- **Processed rows are skipped.** Without a status check this reprocesses the
+  entire sheet every six hours, and that is a bill that grows quietly until
+  someone notices. Rows under 200 characters never reach the model either.
+- **Five rows per run, maximum.** A 300-row backlog should not fire 300 calls
+  in one go.
+- **Character limits are enforced in code, not requested in the prompt.** The
+  model will exceed them. A caption rejected by the platform at publish time is
+  a failure nobody notices until the slot is missed, so limits are applied
+  after the fact, truncating on a word boundary.
+- **A blank platform is flagged, not shipped.** If the model fails, the row is
+  marked `needs review` instead of writing an empty caption into the calendar
+  and calling it done.
+- **The prompt forbids invented claims.** No statistics, no testimonials, no
+  results that were not in the source.
+
 ---
 
 ## Running these
@@ -96,10 +140,13 @@ Sample payloads matching each trigger are in [`sample-data/`](sample-data/).
 
 ## Status
 
-Workflows 01 and 02 are complete and structurally validated (JSON parses,
-every connection resolves to a real node, no duplicate node names). They have
-**not yet been run end to end on a live n8n instance** — that pass is next,
-and this line gets deleted when it is done.
+All four workflows are complete and structurally validated: every file parses,
+every connection resolves to a real node, and no workflow has two nodes sharing
+a name.
+
+They have **not yet been run end to end on a live n8n instance.** That pass is
+next, and this paragraph gets deleted when it is done. Structure is not
+behaviour, and it would be easy to imply otherwise here.
 
 ## Licence
 

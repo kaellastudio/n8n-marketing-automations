@@ -1,0 +1,151 @@
+{
+  "name": "Review request — delivered, waited, asked once",
+  "nodes": [
+    {
+      "parameters": { "httpMethod": "POST", "path": "order-delivered", "responseMode": "responseNode", "options": {} },
+      "id": "delivered-hook",
+      "name": "Order delivered webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-460, 200],
+      "webhookId": "order-delivered"
+    },
+    {
+      "parameters": { "respondWith": "text", "responseBody": "ok", "options": {} },
+      "id": "ack",
+      "name": "Ack carrier",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [-240, 80]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Carriers re-send delivery events, sometimes days apart. The order id is\n// the idempotency key: the sheet append below is keyed on it, and the daily\n// sweep skips anything already marked sent. Without this the same customer\n// gets asked three times and unsubscribes.\nconst out = [];\nfor (const item of $input.all()) {\n  const b = item.json.body ?? item.json;\n  const orderId = String(b.order_id ?? '').trim();\n  const email = String(b.email ?? '').trim().toLowerCase();\n  if (!orderId || !/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(email)) continue;\n  if (String(b.status ?? '').toLowerCase() !== 'delivered') continue;\n  // Ask after the customer has actually used the product, not the day it lands.\n  const WAIT_DAYS = 7;\n  const sendAfter = new Date(Date.now() + WAIT_DAYS * 864e5);\n  out.push({ json: {\n    orderId,\n    email,\n    firstName: String(b.first_name ?? '').trim(),\n    product: String(b.product ?? '').trim(),\n    timezone: String(b.timezone ?? 'Europe/London').trim(),\n    deliveredAt: new Date().toISOString(),\n    sendAfter: sendAfter.toISOString().slice(0, 10),\n    status: 'pending'\n  }});\n}\nreturn out;"
+      },
+      "id": "normalise",
+      "name": "Normalise and set wait",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-240, 320]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": { "__rl": true, "value": "SHEET_ID_HERE", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "review-queue", "mode": "name" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "matchingColumns": ["orderId"],
+          "value": {
+            "orderId": "={{ $json.orderId }}",
+            "email": "={{ $json.email }}",
+            "firstName": "={{ $json.firstName }}",
+            "product": "={{ $json.product }}",
+            "timezone": "={{ $json.timezone }}",
+            "deliveredAt": "={{ $json.deliveredAt }}",
+            "sendAfter": "={{ $json.sendAfter }}",
+            "status": "={{ $json.status }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "queue",
+      "name": "Queue (upsert on orderId)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [-20, 320],
+      "notes": "appendOrUpdate, not append. A duplicate delivery event overwrites its own row instead of creating a second one."
+    },
+    {
+      "parameters": { "rule": { "interval": [{ "field": "hours", "hoursInterval": 1 }] } },
+      "id": "sweep",
+      "name": "Hourly sweep",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-460, 560],
+      "notes": "Hourly, not daily, so each recipient can be sent inside their own civil hours rather than ours."
+    },
+    {
+      "parameters": {
+        "documentId": { "__rl": true, "value": "SHEET_ID_HERE", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "review-queue", "mode": "name" },
+        "options": {}
+      },
+      "id": "read-queue",
+      "name": "Read queue",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [-240, 560]
+    },
+    {
+      "parameters": {
+        "documentId": { "__rl": true, "value": "SHEET_ID_HERE", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "suppression", "mode": "name" },
+        "options": {}
+      },
+      "id": "read-suppression",
+      "name": "Read suppression list",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [-240, 740],
+      "notes": "Unsubscribes and anyone who already left a review. Read every run, never cached."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Four independent reasons not to send. Each one is a real complaint if you\n// get it wrong, so they are checked explicitly rather than folded into one\n// clever condition.\nconst queue = $('Read queue').all().map(i => i.json);\nconst suppressed = new Set(\n  $('Read suppression list').all()\n    .map(i => String(i.json.email ?? '').trim().toLowerCase())\n    .filter(Boolean)\n);\nconst today = new Date().toISOString().slice(0, 10);\nconst out = [];\nfor (const row of queue) {\n  const email = String(row.email ?? '').trim().toLowerCase();\n  if (!email) continue;\n  if (String(row.status ?? '') !== 'pending') continue;      // 1. already sent\n  if (suppressed.has(email)) continue;                        // 2. unsubscribed, or already reviewed\n  if (String(row.sendAfter ?? '') > today) continue;          // 3. still inside the wait\n  // 4. Send inside the recipient's waking hours. Their timezone, not ours.\n  let localHour;\n  try {\n    localHour = Number(new Intl.DateTimeFormat('en-GB', {\n      hour: 'numeric', hour12: false, timeZone: row.timezone || 'Europe/London'\n    }).format(new Date()));\n  } catch (e) {\n    localHour = 10; // unknown timezone: treat as sendable rather than stranding the row forever\n  }\n  if (localHour < 9 || localHour > 18) continue;\n  out.push({ json: { ...row, email } });\n}\nreturn out;"
+      },
+      "id": "eligible",
+      "name": "Due, opted in, civil hour",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-20, 640]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.email }}",
+        "subject": "=How are you getting on with your {{ $json.product }}?",
+        "emailType": "text",
+        "message": "=Hi {{ $json.firstName || 'there' }},\n\nYou ordered the {{ $json.product }} a week ago, so you have had a proper go with it by now.\n\nIf you have two minutes, a short review genuinely helps other people decide: https://example.com/review/{{ $json.orderId }}\n\nAnd if it is not right, reply to this email and we will sort it. That matters more than the review.\n\nThanks,\nThe team\n\nNo more review requests: https://example.com/unsubscribe/{{ $json.orderId }}",
+        "options": {}
+      },
+      "id": "send",
+      "name": "Send review request",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [220, 640],
+      "notes": "Offers a fix before it asks for a review, and carries a one-click opt out. Asking an unhappy customer for a public review is how you buy a one-star."
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": { "__rl": true, "value": "SHEET_ID_HERE", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "review-queue", "mode": "name" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "matchingColumns": ["orderId"],
+          "value": { "orderId": "={{ $json.orderId }}", "status": "sent", "sentAt": "={{ $now.toISO() }}" }
+        },
+        "options": {}
+      },
+      "id": "mark-sent",
+      "name": "Mark sent",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [460, 640],
+      "notes": "Immediately after the send, so a crash mid-run cannot re-send on the next sweep."
+    }
+  ],
+  "connections": {
+    "Order delivered webhook": { "main": [[{ "node": "Ack carrier", "type": "main", "index": 0 }, { "node": "Normalise and set wait", "type": "main", "index": 0 }]] },
+    "Normalise and set wait": { "main": [[{ "node": "Queue (upsert on orderId)", "type": "main", "index": 0 }]] },
+    "Hourly sweep": { "main": [[{ "node": "Read queue", "type": "main", "index": 0 }]] },
+    "Read queue": { "main": [[{ "node": "Read suppression list", "type": "main", "index": 0 }]] },
+    "Read suppression list": { "main": [[{ "node": "Due, opted in, civil hour", "type": "main", "index": 0 }]] },
+    "Due, opted in, civil hour": { "main": [[{ "node": "Send review request", "type": "main", "index": 0 }]] },
+    "Send review request": { "main": [[{ "node": "Mark sent", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "pinData": {},
+  "meta": { "instanceId": "kaella-studio-sample" },
+  "tags": [{ "name": "retention" }, { "name": "email" }]
+}

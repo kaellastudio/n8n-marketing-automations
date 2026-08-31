@@ -1,0 +1,15 @@
+{
+  "_comment": "Synthetic delivery events. Pin onto the webhook node. Includes the awkward cases: a duplicate of an order already queued, a non-delivered status, and a malformed email.",
+  "_cases": [
+    { "case": "normal — should queue with sendAfter 7 days out",
+      "order_id": "SO-1001", "email": "sample.one@example.test", "first_name": "Sample", "product": "Barrier Serum", "status": "delivered", "timezone": "Europe/London" },
+    { "case": "DUPLICATE of SO-1001 — must overwrite its own row, not create a second",
+      "order_id": "SO-1001", "email": "sample.one@example.test", "first_name": "Sample", "product": "Barrier Serum", "status": "delivered", "timezone": "Europe/London" },
+    { "case": "not delivered yet — must be ignored entirely",
+      "order_id": "SO-1002", "email": "sample.two@example.test", "first_name": "Sample", "product": "Cleansing Balm", "status": "in_transit", "timezone": "Australia/Sydney" },
+    { "case": "malformed email — must be dropped before it reaches the queue",
+      "order_id": "SO-1003", "email": "not-an-email", "first_name": "Sample", "product": "Night Cream", "status": "delivered", "timezone": "America/New_York" },
+    { "case": "Sydney customer — tests the civil-hour guard, since 10am London is 8pm there",
+      "order_id": "SO-1004", "email": "sample.four@example.test", "first_name": "Sample", "product": "Lip Oil", "status": "delivered", "timezone": "Australia/Sydney" }
+  ]
+}

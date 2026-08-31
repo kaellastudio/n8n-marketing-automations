@@ -1,0 +1,105 @@
+{
+  "name": "Content repurposing — one post, three platforms",
+  "nodes": [
+    {
+      "parameters": { "rule": { "interval": [{ "field": "hours", "hoursInterval": 6 }] } },
+      "id": "cron",
+      "name": "Check for new drafts",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-460, 300]
+    },
+    {
+      "parameters": {
+        "documentId": { "__rl": true, "value": "SHEET_ID_HERE", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "long-form", "mode": "name" },
+        "options": {}
+      },
+      "id": "read",
+      "name": "Read long-form sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [-240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Only unprocessed rows with enough substance to be worth a model call.\n// Without the status check this reprocesses the whole sheet every six hours,\n// which is a bill that grows quietly until someone notices.\nconst out = [];\nfor (const item of $input.all()) {\n  const r = item.json;\n  if (String(r.status ?? '').trim().toLowerCase() === 'done') continue;\n  const body = String(r.body ?? '').trim();\n  if (body.length < 200) continue;   // too thin to repurpose into anything useful\n  out.push({ json: { rowId: r.rowId ?? r.id, title: String(r.title ?? '').trim(), body: body.slice(0, 6000) } });\n}\nreturn out.slice(0, 5);   // cap per run, so a 300-row backlog cannot fire 300 calls at once"
+      },
+      "id": "pick",
+      "name": "Unprocessed and substantial",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-20, 300]
+    },
+    {
+      "parameters": {
+        "modelId": { "__rl": true, "value": "gpt-4o-mini", "mode": "list" },
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You rewrite one long-form post into three short captions for a small beauty or lifestyle brand.\n\nReturn ONLY minified JSON, no markdown fence:\n{\"instagram\":\"...\",\"linkedin\":\"...\",\"tiktok\":\"...\",\"hashtags\":[\"...\"]}\n\nRules:\n- instagram: max 300 characters, warm, one clear idea, no hashtags inside the text\n- linkedin: max 600 characters, plain and specific, no hype words, no emoji\n- tiktok: max 150 characters, spoken aloud as a hook\n- hashtags: 3 to 6, lowercase, no spaces, relevant to the actual content\n- British spelling throughout\n- Use only claims present in the source. Invent no statistics, no testimonials, no results."
+            },
+            { "role": "user", "content": "=Title: {{ $json.title }}\n\n{{ $json.body }}" }
+          ]
+        },
+        "jsonOutput": true,
+        "options": { "temperature": 0.4 }
+      },
+      "id": "rewrite",
+      "name": "Rewrite for three platforms",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [200, 300],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Never trust the model to have obeyed the character limits. It will exceed\n// them, and a caption rejected by the platform at publish time is a failure\n// nobody sees until the slot is missed. Truncate on a word boundary here.\nconst LIMITS = { instagram: 300, linkedin: 600, tiktok: 150 };\nconst clip = (s, n) => {\n  s = String(s ?? '').trim();\n  if (s.length <= n) return s;\n  const cut = s.slice(0, n);\n  return cut.slice(0, Math.max(cut.lastIndexOf(' '), n - 20)).trim();\n};\nconst out = [];\nconst sources = $('Unprocessed and substantial').all();\n$input.all().forEach((item, i) => {\n  const src = sources[i]?.json ?? {};\n  let v = {};\n  try {\n    const raw = item.json.message?.content ?? item.json.content ?? item.json;\n    v = typeof raw === 'string' ? JSON.parse(raw) : raw;\n  } catch (e) { v = {}; }\n  const instagram = clip(v.instagram, LIMITS.instagram);\n  const linkedin  = clip(v.linkedin,  LIMITS.linkedin);\n  const tiktok    = clip(v.tiktok,    LIMITS.tiktok);\n  // A blank platform means the model failed. Flag for review rather than\n  // writing an empty caption into the calendar and calling it done.\n  const incomplete = !instagram || !linkedin || !tiktok;\n  out.push({ json: {\n    rowId: src.rowId, title: src.title,\n    instagram, linkedin, tiktok,\n    hashtags: Array.isArray(v.hashtags) ? v.hashtags.slice(0, 6).join(' ') : '',\n    status: incomplete ? 'needs review' : 'done',\n    generatedAt: new Date().toISOString()\n  }});\n});\nreturn out;"
+      },
+      "id": "enforce",
+      "name": "Enforce limits, flag failures",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [420, 300]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": { "__rl": true, "value": "SHEET_ID_HERE", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "long-form", "mode": "name" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "matchingColumns": ["rowId"],
+          "value": {
+            "rowId": "={{ $json.rowId }}",
+            "instagram": "={{ $json.instagram }}",
+            "linkedin": "={{ $json.linkedin }}",
+            "tiktok": "={{ $json.tiktok }}",
+            "hashtags": "={{ $json.hashtags }}",
+            "status": "={{ $json.status }}",
+            "generatedAt": "={{ $json.generatedAt }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "write-back",
+      "name": "Write captions back",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [640, 300],
+      "notes": "Writes the status too. That is what stops the next run reprocessing the same row."
+    }
+  ],
+  "connections": {
+    "Check for new drafts": { "main": [[{ "node": "Read long-form sheet", "type": "main", "index": 0 }]] },
+    "Read long-form sheet": { "main": [[{ "node": "Unprocessed and substantial", "type": "main", "index": 0 }]] },
+    "Unprocessed and substantial": { "main": [[{ "node": "Rewrite for three platforms", "type": "main", "index": 0 }]] },
+    "Rewrite for three platforms": { "main": [[{ "node": "Enforce limits, flag failures", "type": "main", "index": 0 }]] },
+    "Enforce limits, flag failures": { "main": [[{ "node": "Write captions back", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "pinData": {},
+  "meta": { "instanceId": "kaella-studio-sample" },
+  "tags": [{ "name": "content" }, { "name": "ai" }]
+}
