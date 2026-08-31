@@ -124,7 +124,7 @@ Requires an n8n instance (self-hosted or cloud) on a recent version.
    - `SHEET_ID_HERE`, your Google Sheet ID
    - `IG_BUSINESS_ID`, set as an n8n environment variable, not pasted inline
    - `#enquiries`, your Slack channel
-4. **Test on pinned data first.** Both workflows send real messages to real
+4. **Test on pinned data first.** Three of these send real messages to real
    people the moment they fire. Pin sample data onto the trigger node and run
    it manually before you activate anything.
 

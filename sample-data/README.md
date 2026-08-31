@@ -12,6 +12,8 @@ manually. Nothing leaves n8n until you connect real credentials.
 |---|---|---|
 | `01-comment-webhook.json` | Comment to DM | A self-echo that must be dropped, and "guiding" which must NOT match "GUIDE" |
 | `02-enquiry-submissions.json` | Enquiry triage | An agency pitch, a tripped honeypot, and a genuinely ambiguous message |
+| `03-delivered-orders.json` | Review request | A duplicate delivery event, a parcel still in transit, and a Sydney customer whose civil hours differ from London's |
+| `04-long-form-rows.json` | Content repurposing | A row already marked done, and one too short to be worth a model call |
 
 The awkward cases are the point. A workflow that handles the happy path is
 not finished.
