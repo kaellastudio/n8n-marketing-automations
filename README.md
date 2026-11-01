@@ -8,6 +8,23 @@ Built by [Kaella Studio](https://kaellastudio.com). Every workflow here is
 importable, commented, and runs on synthetic data. **No client data, no
 client names, no real credentials.**
 
+> **Portfolio build.** These were built to show the approach, not run on a
+> live brand. There were no Instagram or store pages of my own to point them
+> at, so they were tested on a real n8n instance with Meta, Google, OpenAI
+> and Slack replaced by local stand-ins (details under [Status](#status)).
+> To use them for real, replace the placeholders below and connect your own
+> accounts, then do one test run before switching anything on:
+>
+> | Placeholder | Where | Replace with |
+> |---|---|---|
+> | `SHEET_ID_HERE` | Every Google Sheets node | Your Google Sheet ID |
+> | `VERIFY_TOKEN_HERE` | *Verify token matches*, Comment to DM | Any long random string, also typed into the Meta app dashboard |
+> | `#enquiries` | *Notify Slack*, Enquiry triage | Your Slack channel |
+> | `example.com` links | Comment to DM keywords, Review request emails | Your real guide, pricing, review and unsubscribe pages |
+> | Sign-off and wording | *Acknowledge sender*, *Send review request* | Your own name and brand voice |
+> | Workflow timezone | *Workflow settings* | The brand's own timezone |
+> | Credentials | Every node that needs one | Your own. None are included |
+
 ---
 
 ## Why these three
