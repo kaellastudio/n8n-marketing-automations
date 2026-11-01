@@ -1,5 +1,5 @@
 {
-  "name": "Review request — delivered, waited, asked once",
+  "name": "Review request: delivered, waited, asked once",
   "nodes": [
     {
       "parameters": { "httpMethod": "POST", "path": "order-delivered", "responseMode": "responseNode", "options": {} },
@@ -130,9 +130,9 @@
     {
       "parameters": {
         "sendTo": "={{ $json.email }}",
-        "subject": "=How are you getting on with your {{ $json.product }}?",
+        "subject": "=How are you getting on with your {{ $json.product || 'order' }}?",
         "emailType": "text",
-        "message": "=Hi {{ $json.firstName || 'there' }},\n\nYou ordered the {{ $json.product }} a week ago, so you have had a proper go with it by now.\n\nIf you have two minutes, a short review genuinely helps other people decide: https://example.com/review/{{ $json.orderId }}\n\nAnd if it is not right, reply to this email and we will sort it. That matters more than the review.\n\nThanks,\nThe team\n\nNo more review requests: https://example.com/unsubscribe/{{ $json.orderId }}",
+        "message": "=Hi {{ $json.firstName || 'there' }},\n\nYou ordered {{ $json.product ? 'the ' + $json.product : 'from us' }} a week ago, so you have had a proper go with it by now.\n\nIf you have two minutes, a short review genuinely helps other people decide: https://example.com/review/{{ $json.orderId }}\n\nAnd if it is not right, reply to this email and we will sort it. That matters more than the review.\n\nThanks,\nThe team\n\nNo more review requests: https://example.com/unsubscribe/{{ $json.orderId }}",
         "options": { "appendAttribution": false }
       },
       "id": "send",

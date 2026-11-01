@@ -50,6 +50,10 @@ thread sees it worked.
 - **The webhook acknowledges Meta immediately** on a separate branch. Meta
   requires a 200 within five seconds and retries if it does not get one,
   which means duplicate DMs if you do the work first and respond after.
+- **It answers Meta's verification call.** When you register the callback
+  URL, Meta sends a GET with a challenge and sends nothing else until it gets
+  that challenge back. A second webhook on the same path handles it, and
+  refuses anyone without your verify token.
 
 **Honest limits.** Instagram Private Replies work **once per comment**, and
 only within **seven days** of it. This cannot DM someone who has never
@@ -133,6 +137,10 @@ Requires an n8n instance (self-hosted or cloud) on a recent version.
    purpose. Nothing here contains a key, and nothing should.
 3. **Replace the placeholders.** Search each workflow for:
    - `SHEET_ID_HERE`, your Google Sheet ID
+   - `VERIFY_TOKEN_HERE`, in Comment to DM: any long random string. Type the
+     same string into the Meta app dashboard as the verify token, with the
+     workflow's production webhook URL (path `ig-comment`) as the callback URL.
+     Activate the workflow before you click Verify.
    - `#enquiries`, your Slack channel
    - `example.com`, the keyword links in Comment to DM, and the review and
      unsubscribe links in Review request. The unsubscribe link needs something
@@ -149,8 +157,12 @@ Requires an n8n instance (self-hosted or cloud) on a recent version.
 
    Writes use raw cell format, so IDs and dates stay as the text the workflow
    compares against, rather than being turned into numbers or locale dates.
-5. **Test on pinned data first.** Three of these send real messages to real
-   people the moment they fire. Pin sample data onto the trigger node and run
+5. **Set each workflow's timezone** (*Workflow settings → Timezone*) to the
+   brand's own. "One DM per person per day" in Comment to DM means a day in
+   that timezone.
+6. **Test on pinned data first.** Three of these send real messages to real
+   people the moment they fire. Pin the sample data (see
+   [`sample-data/`](sample-data/) for which node takes which file) and run
    it manually before you activate anything.
 
 Sample payloads matching each trigger are in [`sample-data/`](sample-data/).
@@ -165,15 +177,20 @@ Sample payloads matching each trigger are in [`sample-data/`](sample-data/).
 
 ## Status
 
-All four workflows are complete and structurally validated: every file parses,
-every connection resolves to a real node, no workflow has two nodes sharing
-a name, and every node parameter has been checked against the n8n node source
-(n8n-nodes-base 2.15.1). The Code nodes and the wiring between nodes have been
-run against the sample data in a simulator, with the external services mocked.
+All four workflows have been run end to end on n8n 2.45.7 against the sample
+data and the awkward cases around it: repeats, duplicates, a model outage, a
+model reply that is not JSON, a failed email in the middle of a batch, an
+expired comment, an empty suppression list. Comment to DM was also run as an
+active workflow over real HTTP, including Meta's verification call. Every
+node parameter has been checked against the n8n node definitions for that
+version.
 
-They have **not yet been run end to end on a live n8n instance.** That pass is
-next, and this paragraph gets deleted when it is done. Structure is not
-behaviour, and it would be easy to imply otherwise here.
+In those runs, Google Sheets, Gmail, Slack, OpenAI and the Meta Graph API
+were stand-ins built on the real nodes' parameter definitions, so every
+expression was evaluated by n8n itself, but no request reached Google, Slack,
+OpenAI or Meta. **They have not yet been run against live accounts.** The
+first live run of each is the remaining check, and this paragraph gets
+updated when it is done.
 
 ## Licence
 

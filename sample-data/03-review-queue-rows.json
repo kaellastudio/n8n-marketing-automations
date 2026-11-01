@@ -1,0 +1,26 @@
+[
+  {
+    "_case": "Due, London. Sent only while it is 9:00 to 18:59 in London.",
+    "orderId": "SO-0901", "email": "due.london@example.test", "firstName": "Sample", "product": "Barrier Serum", "timezone": "Europe/London", "deliveredAt": "2026-01-01T10:00:00.000Z", "sendAfter": "2026-01-08", "status": "pending"
+  },
+  {
+    "_case": "Due, Sydney. Sent only while it is 9:00 to 18:59 in Sydney, so at a different hour from the London row.",
+    "orderId": "SO-0902", "email": "due.sydney@example.test", "firstName": "Sample", "product": "Lip Oil", "timezone": "Australia/Sydney", "deliveredAt": "2026-01-01T10:00:00.000Z", "sendAfter": "2026-01-08", "status": "pending"
+  },
+  {
+    "_case": "Already sent: must never be sent again.",
+    "orderId": "SO-0903", "email": "already.sent@example.test", "firstName": "Sample", "product": "Night Cream", "timezone": "Europe/London", "deliveredAt": "2026-01-01T10:00:00.000Z", "sendAfter": "2026-01-08", "status": "sent", "sentAt": "2026-01-08T10:00:00.000Z"
+  },
+  {
+    "_case": "Still inside the seven-day wait: not yet.",
+    "orderId": "SO-0904", "email": "too.early@example.test", "firstName": "Sample", "product": "Cleansing Balm", "timezone": "Europe/London", "deliveredAt": "2099-01-01T10:00:00.000Z", "sendAfter": "2099-01-08", "status": "pending"
+  },
+  {
+    "_case": "On the suppression list (see the suppression sample row below): must be skipped.",
+    "orderId": "SO-0905", "email": "unsubscribed@example.test", "firstName": "Sample", "product": "Lip Oil", "timezone": "Europe/London", "deliveredAt": "2026-01-01T10:00:00.000Z", "sendAfter": "2026-01-08", "status": "pending"
+  },
+  {
+    "_case": "Unrecognised timezone: treated as sendable rather than stranded forever.",
+    "orderId": "SO-0906", "email": "odd.timezone@example.test", "firstName": "", "product": "", "timezone": "Mars/Olympus_Mons", "deliveredAt": "2026-01-01T10:00:00.000Z", "sendAfter": "2026-01-08", "status": "pending"
+  }
+]
