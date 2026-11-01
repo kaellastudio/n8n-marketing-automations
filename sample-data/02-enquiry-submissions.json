@@ -1,6 +1,6 @@
 [
   {
-    "_comment": "Strong fit — should classify social/strong and reach Slack + auto-reply.",
+    "_comment": "Strong fit: should classify social/strong and reach Slack + auto-reply.",
     "name": "Sample Founder",
     "email": "hello@example-brand.test",
     "brand": "Example Skincare",
@@ -9,7 +9,7 @@
     "website": ""
   },
   {
-    "_comment": "Poor fit — an agency pitching. Should route to bin, no auto-reply.",
+    "_comment": "Poor fit: an agency pitching. Should route to bin, no auto-reply.",
     "name": "Sample Agency",
     "email": "sales@example-agency.test",
     "brand": "",
@@ -18,7 +18,7 @@
     "website": ""
   },
   {
-    "_comment": "Honeypot tripped — a bot filled the hidden field. Must be dropped before the LLM call.",
+    "_comment": "Honeypot tripped: a bot filled the hidden field. Must be dropped before the LLM call.",
     "name": "Sample Bot",
     "email": "bot@example.test",
     "brand": "",
@@ -27,7 +27,7 @@
     "website": "http://spam.example.test"
   },
   {
-    "_comment": "Ambiguous — should classify unclear/possible and still reach a human.",
+    "_comment": "Ambiguous: should classify unclear/possible and still reach a human.",
     "name": "Sample Enquirer",
     "email": "someone@example.test",
     "brand": "Example Baby Co",

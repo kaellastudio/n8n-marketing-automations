@@ -1,5 +1,5 @@
 {
-  "name": "Enquiry triage — classify, route, acknowledge",
+  "name": "Enquiry triage: classify, route, acknowledge",
   "nodes": [
     {
       "parameters": { "httpMethod": "POST", "path": "enquiry", "responseMode": "onReceived", "options": {} },
@@ -82,21 +82,24 @@
       "name": "Acknowledge sender",
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
-      "position": [660, 200],
-      "notes": "Deliberately says one working day, not an hour. Never promise a response time the person cannot keep."
+      "position": [660, 400],
+      "onError": "continueRegularOutput",
+      "notes": "Deliberately says one working day, not an hour. Never promise a response time the person cannot keep. onError continues: one bounced acknowledgement must not stop the run."
     },
     {
       "parameters": {
         "select": "channel",
         "channelId": { "__rl": true, "value": "#enquiries", "mode": "name" },
-        "text": "=*{{ $json.fit === 'strong' ? 'Strong fit' : 'Needs a look' }}* — {{ $json.brand || 'no brand given' }}\n{{ $json.name }} <{{ $json.email }}>\nService: {{ $json.service }} · Urgency: {{ $json.urgency }}\nWhy: {{ $json.reason }}\n\n>{{ $json.message.slice(0, 300) }}",
+        "text": "=*{{ $json.fit === 'strong' ? 'Strong fit' : 'Needs a look' }}*: {{ $json.brand || 'no brand given' }}\n{{ $json.name || 'No name given' }} <{{ $json.email }}>\nService: {{ $json.service }} · Urgency: {{ $json.urgency }}\nWhy: {{ $json.reason }}\n\n>{{ $json.message.slice(0, 300) }}",
         "otherOptions": { "includeLinkToWorkflow": false }
       },
       "id": "notify",
       "name": "Notify Slack",
       "type": "n8n-nodes-base.slack",
       "typeVersion": 2.2,
-      "position": [660, 380]
+      "position": [660, 220],
+      "onError": "continueRegularOutput",
+      "notes": "Above the acknowledgement on the canvas, so n8n runs it first: the lead reaches a human before anything is emailed."
     },
     {
       "parameters": {
