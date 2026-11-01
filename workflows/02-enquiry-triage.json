@@ -2,13 +2,14 @@
   "name": "Enquiry triage — classify, route, acknowledge",
   "nodes": [
     {
-      "parameters": { "httpMethod": "POST", "path": "enquiry", "responseMode": "lastNode", "options": {} },
+      "parameters": { "httpMethod": "POST", "path": "enquiry", "responseMode": "onReceived", "options": {} },
       "id": "form-webhook",
       "name": "Enquiry form",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [-460, 300],
-      "webhookId": "enquiry"
+      "webhookId": "enquiry",
+      "notes": "Responds as soon as the submission arrives. lastNode would make the form wait on the model, Gmail and Slack, then hand the visitor whatever the last API returned."
     },
     {
       "parameters": {
@@ -45,7 +46,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Merge the model's verdict back onto the enquiry. If the model failed or\n// returned something unparseable, fall back to \"unclear\" and route to the\n// human. Losing a lead to a bad JSON parse is the worst outcome here.\nconst out = [];\nfor (const item of $input.all()) {\n  const enquiry = $('Clean and drop bots').first().json;\n  let verdict = { service: 'unclear', fit: 'possible', urgency: 'normal', reason: 'classifier unavailable' };\n  try {\n    const raw = item.json.message?.content ?? item.json.content ?? item.json;\n    verdict = typeof raw === 'string' ? JSON.parse(raw) : raw;\n  } catch (e) { /* keep the fallback */ }\n  out.push({ json: { ...enquiry, ...verdict } });\n}\nreturn out;"
+        "jsCode": "// Merge the model's verdict back onto its own enquiry. The classifier returns\n// one item per input, in order, so they pair by index. If the model failed,\n// or returned anything that is not a valid verdict, fall back to \"unclear\"\n// and route to the human. Losing a lead to a bad JSON parse is the worst\n// outcome here.\nconst ALLOWED = {\n  service: ['social', 'automation', 'exec', 'unclear'],\n  fit: ['strong', 'possible', 'poor'],\n  urgency: ['high', 'normal']\n};\nconst FALLBACK = { service: 'unclear', fit: 'possible', urgency: 'normal', reason: 'classifier unavailable' };\nconst lower = s => String(s ?? '').trim().toLowerCase();\nconst enquiries = $('Clean and drop bots').all();\nconst out = [];\n$input.all().forEach((item, i) => {\n  if (!enquiries[i]) return;\n  let verdict = FALLBACK;\n  try {\n    const raw = item.json.message?.content ?? item.json.content;\n    const v = typeof raw === 'string' ? JSON.parse(raw) : raw;\n    const service = lower(v?.service), fit = lower(v?.fit), urgency = lower(v?.urgency);\n    if (ALLOWED.service.includes(service) && ALLOWED.fit.includes(fit) && ALLOWED.urgency.includes(urgency)) {\n      verdict = { service, fit, urgency, reason: String(v.reason ?? '').slice(0, 200) };\n    }\n  } catch (e) { /* keep the fallback */ }\n  out.push({ json: { ...enquiries[i].json, ...verdict } });\n});\nreturn out;"
       },
       "id": "merge",
       "name": "Merge verdict",
@@ -57,8 +58,8 @@
       "parameters": {
         "rules": {
           "values": [
-            { "conditions": { "options": { "caseSensitive": true, "typeValidation": "loose", "version": 2 }, "conditions": [{ "leftValue": "={{ $json.fit }}", "rightValue": "poor", "operator": { "type": "string", "operation": "equals" } }], "combinator": "and" }, "outputKey": "bin" },
-            { "conditions": { "options": { "caseSensitive": true, "typeValidation": "loose", "version": 2 }, "conditions": [{ "leftValue": "={{ $json.fit }}", "rightValue": "strong", "operator": { "type": "string", "operation": "equals" } }], "combinator": "and" }, "outputKey": "hot" }
+            { "conditions": { "options": { "caseSensitive": true, "typeValidation": "loose", "version": 2 }, "conditions": [{ "leftValue": "={{ $json.fit }}", "rightValue": "poor", "operator": { "type": "string", "operation": "equals" } }], "combinator": "and" }, "renameOutput": true, "outputKey": "bin" },
+            { "conditions": { "options": { "caseSensitive": true, "typeValidation": "loose", "version": 2 }, "conditions": [{ "leftValue": "={{ $json.fit }}", "rightValue": "strong", "operator": { "type": "string", "operation": "equals" } }], "combinator": "and" }, "renameOutput": true, "outputKey": "hot" }
           ]
         },
         "options": { "fallbackOutput": "extra", "renameFallbackOutput": "review" }
@@ -72,10 +73,10 @@
     {
       "parameters": {
         "sendTo": "={{ $json.email }}",
-        "subject": "=Thanks for getting in touch, {{ $json.name.split(' ')[0] }}",
+        "subject": "=Thanks for getting in touch{{ $json.name ? ', ' + $json.name.split(' ')[0] : '' }}",
         "emailType": "text",
-        "message": "=Hi {{ $json.name.split(' ')[0] }},\n\nThanks for writing about {{ $json.brand }}. I have read it properly and I will come back to you with something useful within one working day.\n\nI take two clients at a time, so if there is a slot the next step is a short call.\n\nKaella\nkaellastudio.com",
-        "options": {}
+        "message": "=Hi {{ $json.name.split(' ')[0] || 'there' }},\n\nThanks for writing about {{ $json.brand || 'your brand' }}. I have read it properly and I will come back to you with something useful within one working day.\n\nI take two clients at a time, so if there is a slot the next step is a short call.\n\nKaella\nkaellastudio.com",
+        "options": { "appendAttribution": false }
       },
       "id": "ack",
       "name": "Acknowledge sender",
@@ -89,7 +90,7 @@
         "select": "channel",
         "channelId": { "__rl": true, "value": "#enquiries", "mode": "name" },
         "text": "=*{{ $json.fit === 'strong' ? 'Strong fit' : 'Needs a look' }}* — {{ $json.brand || 'no brand given' }}\n{{ $json.name }} <{{ $json.email }}>\nService: {{ $json.service }} · Urgency: {{ $json.urgency }}\nWhy: {{ $json.reason }}\n\n>{{ $json.message.slice(0, 300) }}",
-        "otherOptions": {}
+        "otherOptions": { "includeLinkToWorkflow": false }
       },
       "id": "notify",
       "name": "Notify Slack",
@@ -111,32 +112,32 @@
             "brand": "={{ $json.brand }}",
             "service": "={{ $json.service }}",
             "fit": "={{ $json.fit }}",
+            "urgency": "={{ $json.urgency }}",
             "reason": "={{ $json.reason }}"
           }
         },
-        "options": {}
+        "options": { "cellFormat": "RAW" }
       },
       "id": "log",
       "name": "Log enquiry",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
-      "position": [900, 380]
+      "position": [420, 100],
+      "notes": "Fed straight from Merge verdict, so every enquiry (bin included) is logged exactly once, and logged before the email or Slack step can fail."
     }
   ],
   "connections": {
     "Enquiry form": { "main": [[{ "node": "Clean and drop bots", "type": "main", "index": 0 }]] },
     "Clean and drop bots": { "main": [[{ "node": "Classify enquiry", "type": "main", "index": 0 }]] },
     "Classify enquiry": { "main": [[{ "node": "Merge verdict", "type": "main", "index": 0 }]] },
-    "Merge verdict": { "main": [[{ "node": "Route by fit", "type": "main", "index": 0 }]] },
+    "Merge verdict": { "main": [[{ "node": "Log enquiry", "type": "main", "index": 0 }, { "node": "Route by fit", "type": "main", "index": 0 }]] },
     "Route by fit": {
       "main": [
-        [{ "node": "Log enquiry", "type": "main", "index": 0 }],
+        [],
         [{ "node": "Acknowledge sender", "type": "main", "index": 0 }, { "node": "Notify Slack", "type": "main", "index": 0 }],
         [{ "node": "Notify Slack", "type": "main", "index": 0 }]
       ]
-    },
-    "Acknowledge sender": { "main": [[{ "node": "Log enquiry", "type": "main", "index": 0 }]] },
-    "Notify Slack": { "main": [[{ "node": "Log enquiry", "type": "main", "index": 0 }]] }
+    }
   },
   "settings": { "executionOrder": "v1" },
   "pinData": {},

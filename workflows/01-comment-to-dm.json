@@ -29,7 +29,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Meta batches events. Flatten to one item per comment, and drop\n// anything that is not a comment (edits, likes, echoes of our own replies).\nconst out = [];\nfor (const item of $input.all()) {\n  const body = item.json.body ?? item.json;\n  for (const entry of body.entry ?? []) {\n    for (const change of entry.changes ?? []) {\n      if (change.field !== 'comments') continue;\n      const v = change.value ?? {};\n      // Our own replies come back through the same webhook. Without this the\n      // workflow answers itself, forever.\n      if (v.from?.id && v.from.id === $env.IG_BUSINESS_ID) continue;\n      out.push({\n        json: {\n          commentId: v.id,\n          mediaId: v.media?.id,\n          text: (v.text ?? '').trim(),\n          fromId: v.from?.id,\n          username: v.from?.username,\n          receivedAt: new Date().toISOString()\n        }\n      });\n    }\n  }\n}\nreturn out;"
+        "jsCode": "// Meta batches events. Flatten to one item per comment, and drop\n// anything that is not a comment (edits, likes, echoes of our own replies).\nconst out = [];\nfor (const item of $input.all()) {\n  const body = item.json.body ?? item.json;\n  for (const entry of body.entry ?? []) {\n    // entry.id is our own Instagram professional account. It is read from the\n    // payload, not an environment variable: $env is blocked by default on\n    // n8n Cloud and n8n 2.x, and an unset variable would silently switch the\n    // echo check below off.\n    const ownId = String(entry.id ?? '');\n    if (!ownId) continue;\n    for (const change of entry.changes ?? []) {\n      if (change.field !== 'comments') continue;\n      const v = change.value ?? {};\n      const fromId = String(v.from?.id ?? '');\n      const commentId = String(v.id ?? '');\n      if (!fromId || !commentId) continue;\n      // Our own replies come back through the same webhook. Without this the\n      // workflow answers itself, forever.\n      if (fromId === ownId) continue;\n      out.push({\n        json: {\n          igAccountId: ownId,\n          commentId,\n          mediaId: v.media?.id,\n          text: String(v.text ?? '').trim(),\n          fromId,\n          username: v.from?.username,\n          receivedAt: new Date().toISOString()\n        }\n      });\n    }\n  }\n}\nreturn out;"
       },
       "id": "normalise",
       "name": "Flatten and de-echo",
@@ -49,80 +49,64 @@
     },
     {
       "parameters": {
-        "operation": "get",
+        "operation": "read",
         "documentId": { "__rl": true, "value": "SHEET_ID_HERE", "mode": "id" },
         "sheetName": { "__rl": true, "value": "sent-log", "mode": "name" },
-        "filtersUI": { "values": [{ "lookupColumn": "fromId", "lookupValue": "={{ $json.fromId }}" }] },
         "options": {}
       },
-      "id": "check-log",
-      "name": "Already messaged today?",
+      "id": "read-log",
+      "name": "Read sent log",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
       "position": [200, 400],
+      "executeOnce": true,
       "alwaysOutputData": true,
-      "notes": "Rate limit per person. Meta suspends accounts that DM the same user repeatedly."
+      "notes": "Read once per run, not once per comment. alwaysOutputData so an empty log still lets the first DM through."
     },
     {
       "parameters": {
-        "conditions": {
-          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose", "version": 2 },
-          "conditions": [
-            {
-              "id": "not-sent-today",
-              "leftValue": "={{ $json.sentAt ? $json.sentAt.slice(0,10) : '' }}",
-              "rightValue": "={{ $now.format('yyyy-MM-dd') }}",
-              "operator": { "type": "string", "operation": "notEquals" }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
+        "jsCode": "// One DM per person per day. The sent log is read once, then every comment\n// in this batch is checked against it. (A per-comment lookup node would\n// replace each comment with a sheet row, losing the comment id and the link\n// the next nodes need.)\nconst today = $now.toFormat('yyyy-MM-dd');\nconst sentToday = new Set(\n  $('Read sent log').all()\n    .map(i => i.json)\n    .filter(r => String(r.sentAt ?? '').slice(0, 10) === today)\n    .map(r => String(r.fromId ?? ''))\n    .filter(Boolean)\n);\nconst out = [];\nfor (const item of $('Match keyword').all()) {\n  const fromId = String(item.json.fromId ?? '');\n  if (!fromId || sentToday.has(fromId)) continue;\n  sentToday.add(fromId);   // two comments from one person in one batch: one DM\n  out.push({ json: item.json });\n}\nreturn out;"
       },
-      "id": "if-fresh",
-      "name": "Not already sent",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [420, 400]
+      "id": "not-today",
+      "name": "Not messaged today",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [420, 400],
+      "notes": "Rate limit per person. Meta restricts accounts that DM the same user repeatedly."
     },
     {
       "parameters": {
         "graphApiVersion": "v21.0",
         "hostUrl": "graph.facebook.com",
         "httpRequestMethod": "POST",
-        "node": "={{ $env.IG_BUSINESS_ID }}/messages",
-        "options": {},
-        "sendBody": true,
-        "bodyParametersUi": {
-          "parameter": [
-            { "name": "recipient", "value": "={{ JSON.stringify({ comment_id: $json.commentId }) }}" },
-            { "name": "message", "value": "={{ JSON.stringify({ text: 'Here you go: ' + $json.link }) }}" }
-          ]
+        "node": "={{ $json.igAccountId }}",
+        "edge": "messages",
+        "options": {
+          "queryParameters": {
+            "parameter": [
+              { "name": "recipient", "value": "={{ JSON.stringify({ comment_id: $json.commentId }) }}" },
+              { "name": "message", "value": "={{ JSON.stringify({ text: 'Here you go: ' + $json.link }) }}" }
+            ]
+          }
         }
       },
       "id": "send-dm",
       "name": "Send private reply (DM)",
       "type": "n8n-nodes-base.facebookGraphApi",
       "typeVersion": 1,
-      "position": [660, 300],
-      "notes": "Private Replies only work once per comment and only within 7 days of it."
+      "position": [640, 400],
+      "onError": "continueRegularOutput",
+      "notes": "Private Replies only work once per comment and only within 7 days of it. This node only sends query parameters (it has no body field), which the Graph API accepts for POST."
     },
     {
       "parameters": {
-        "graphApiVersion": "v21.0",
-        "hostUrl": "graph.facebook.com",
-        "httpRequestMethod": "POST",
-        "node": "={{ $json.commentId }}/replies",
-        "options": {},
-        "sendBody": true,
-        "bodyParametersUi": { "parameter": [{ "name": "message", "value": "={{ $json.publicReply }}" }] }
+        "jsCode": "// Keep only the comments whose DM actually went out. The Graph API node\n// returns exactly one item per input, in order, so results pair with the\n// comments by index. A failed DM (comment older than seven days, or already\n// privately replied to) stops here: no public \"check your DMs\" under it, and\n// no log row, so it does not count against that person's one DM today.\nconst comments = $('Not messaged today').all();\nconst out = [];\n$input.all().forEach((item, i) => {\n  if (!item.json.message_id || !comments[i]) return;\n  out.push({ json: comments[i].json });\n});\nreturn out;"
       },
-      "id": "public-reply",
-      "name": "Public reply under comment",
-      "type": "n8n-nodes-base.facebookGraphApi",
-      "typeVersion": 1,
-      "position": [660, 480],
-      "notes": "Social proof. Other people reading the comments see it worked."
+      "id": "dm-ok",
+      "name": "DM went out",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [860, 400]
     },
     {
       "parameters": {
@@ -139,22 +123,45 @@
             "sentAt": "={{ $now.toISO() }}"
           }
         },
-        "options": {}
+        "options": { "cellFormat": "RAW" }
       },
       "id": "log-sent",
       "name": "Log to sheet",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
-      "position": [900, 400]
+      "position": [1080, 300],
+      "notes": "RAW, so Sheets stores Instagram ids as text. Parsed as numbers, 17-digit ids lose precision and stop matching."
+    },
+    {
+      "parameters": {
+        "graphApiVersion": "v21.0",
+        "hostUrl": "graph.facebook.com",
+        "httpRequestMethod": "POST",
+        "node": "={{ $json.commentId }}",
+        "edge": "replies",
+        "options": {
+          "queryParameters": {
+            "parameter": [{ "name": "message", "value": "={{ $json.publicReply }}" }]
+          }
+        }
+      },
+      "id": "public-reply",
+      "name": "Public reply under comment",
+      "type": "n8n-nodes-base.facebookGraphApi",
+      "typeVersion": 1,
+      "position": [1080, 500],
+      "onError": "continueRegularOutput",
+      "notes": "Social proof. Only posted once the DM has actually gone out, so it never says \"check your DMs\" over an empty inbox."
     }
   ],
   "connections": {
     "Meta webhook (comment)": { "main": [[{ "node": "Ack Meta within 5s", "type": "main", "index": 0 }, { "node": "Flatten and de-echo", "type": "main", "index": 0 }]] },
     "Flatten and de-echo": { "main": [[{ "node": "Match keyword", "type": "main", "index": 0 }]] },
-    "Match keyword": { "main": [[{ "node": "Already messaged today?", "type": "main", "index": 0 }]] },
-    "Already messaged today?": { "main": [[{ "node": "Not already sent", "type": "main", "index": 0 }]] },
-    "Not already sent": { "main": [[{ "node": "Send private reply (DM)", "type": "main", "index": 0 }, { "node": "Public reply under comment", "type": "main", "index": 0 }], []] },
-    "Send private reply (DM)": { "main": [[{ "node": "Log to sheet", "type": "main", "index": 0 }]] }
+    "Match keyword": { "main": [[{ "node": "Read sent log", "type": "main", "index": 0 }]] },
+    "Read sent log": { "main": [[{ "node": "Not messaged today", "type": "main", "index": 0 }]] },
+    "Not messaged today": { "main": [[{ "node": "Send private reply (DM)", "type": "main", "index": 0 }]] },
+    "Send private reply (DM)": { "main": [[{ "node": "DM went out", "type": "main", "index": 0 }]] },
+    "DM went out": { "main": [[{ "node": "Log to sheet", "type": "main", "index": 0 }, { "node": "Public reply under comment", "type": "main", "index": 0 }]] }
   },
   "settings": { "executionOrder": "v1" },
   "pinData": {},

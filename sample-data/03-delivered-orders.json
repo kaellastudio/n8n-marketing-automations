@@ -3,7 +3,7 @@
   "_cases": [
     { "case": "normal — should queue with sendAfter 7 days out",
       "order_id": "SO-1001", "email": "sample.one@example.test", "first_name": "Sample", "product": "Barrier Serum", "status": "delivered", "timezone": "Europe/London" },
-    { "case": "DUPLICATE of SO-1001 — must overwrite its own row, not create a second",
+    { "case": "DUPLICATE of SO-1001 — must not create a second row, or reset the first one's wait or status",
       "order_id": "SO-1001", "email": "sample.one@example.test", "first_name": "Sample", "product": "Barrier Serum", "status": "delivered", "timezone": "Europe/London" },
     { "case": "not delivered yet — must be ignored entirely",
       "order_id": "SO-1002", "email": "sample.two@example.test", "first_name": "Sample", "product": "Cleansing Balm", "status": "in_transit", "timezone": "Australia/Sydney" },

@@ -23,7 +23,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Only unprocessed rows with enough substance to be worth a model call.\n// Without the status check this reprocesses the whole sheet every six hours,\n// which is a bill that grows quietly until someone notices.\nconst out = [];\nfor (const item of $input.all()) {\n  const r = item.json;\n  if (String(r.status ?? '').trim().toLowerCase() === 'done') continue;\n  const body = String(r.body ?? '').trim();\n  if (body.length < 200) continue;   // too thin to repurpose into anything useful\n  out.push({ json: { rowId: r.rowId ?? r.id, title: String(r.title ?? '').trim(), body: body.slice(0, 6000) } });\n}\nreturn out.slice(0, 5);   // cap per run, so a 300-row backlog cannot fire 300 calls at once"
+        "jsCode": "// Only unprocessed rows with enough substance to be worth a model call.\n// Without the status check this reprocesses the whole sheet every six hours,\n// which is a bill that grows quietly until someone notices. \"needs review\"\n// rows are skipped too: they wait for a human, and clearing the status is\n// how you send one back through.\nconst SKIP = ['done', 'needs review'];\nconst out = [];\nfor (const item of $input.all()) {\n  const r = item.json;\n  if (SKIP.includes(String(r.status ?? '').trim().toLowerCase())) continue;\n  const rowId = String(r.rowId ?? '').trim();\n  if (!rowId) continue;              // the write-back matches on rowId, so a row without one cannot be updated\n  const body = String(r.body ?? '').trim();\n  if (body.length < 200) continue;   // too thin to repurpose into anything useful\n  out.push({ json: { rowId, title: String(r.title ?? '').trim(), body: body.slice(0, 6000) } });\n}\nreturn out.slice(0, 5);   // cap per run, so a 300-row backlog cannot fire 300 calls at once"
       },
       "id": "pick",
       "name": "Unprocessed and substantial",
@@ -81,7 +81,7 @@
             "generatedAt": "={{ $json.generatedAt }}"
           }
         },
-        "options": {}
+        "options": { "cellFormat": "RAW" }
       },
       "id": "write-back",
       "name": "Write captions back",

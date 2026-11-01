@@ -38,11 +38,15 @@ thread sees it worked.
 - **It does not answer itself.** Your own replies come back through the same
   webhook. Without a check on the sender ID, the workflow replies to its own
   reply, and keeps going. This is the single most common way a comment bot
-  gets an account restricted.
+  gets an account restricted. The check compares against the account ID Meta
+  sends in every event, so there is no environment variable to forget.
 - **Whole-word keyword matching.** `\bGUIDE\b`, so a comment saying "guiding"
   does not trigger the GUIDE rule. Longest keyword wins when two match.
 - **One DM per person per day**, checked against a sheet before sending. Meta
   restricts accounts that message the same user repeatedly.
+- **The public reply only goes up once the DM has gone out.** A "check your
+  DMs" over an empty inbox is worse than no reply. A failed DM is not logged,
+  so it does not use up that person's one DM for the day.
 - **The webhook acknowledges Meta immediately** on a separate branch. Meta
   requires a 200 within five seconds and retries if it does not get one,
   which means duplicate DMs if you do the work first and respond after.
@@ -61,10 +65,13 @@ have looked at your inbox.
   check run *before* the LLM call, so spam never becomes a bill.
 - **`temperature: 0`.** The same enquiry classifies the same way twice.
   Triage that changes its mind is not triage.
-- **Failure routes to a human.** If the model is down or returns
-  unparseable JSON, the enquiry is marked `unclear` and still reaches you.
+- **Failure routes to a human.** If the model is down, or returns JSON that
+  does not parse or does not match the expected values, the enquiry is marked
+  `unclear` and still reaches you.
   Losing a real lead to a JSON parse error is the worst possible outcome, so
   the fallback is deliberately generous rather than clever.
+- **Every enquiry is logged once**, spam-binned ones included, before the
+  email or Slack step has a chance to fail.
 - **The auto-reply promises one working day**, not one hour. An automation
   that writes cheques the human cannot cash is worse than no automation.
 
@@ -74,9 +81,9 @@ An order is delivered, seven days pass, and the customer gets one email asking
 how they are getting on. Never twice.
 
 - **Duplicate delivery events are expected.** Carriers re-send them, sometimes
-  days apart. The queue upserts on order ID rather than appending, so the same
-  order overwrites its own row instead of creating a second one and a second
-  email.
+  days apart. An order already in the queue is left alone, so a late duplicate
+  cannot reset a sent row to pending or restart the wait, and two copies in
+  the same batch become one row.
 - **The sweep runs hourly, not daily**, so each recipient can be sent inside
   *their* civil hours. A 10am London send is 8pm in Sydney. The check reads the
   customer's own timezone, and an unrecognised one is treated as sendable
@@ -88,8 +95,10 @@ how they are getting on. Never twice.
 - **The email offers a fix before it asks for a review**, and carries a
   one-click opt out. Asking an unhappy customer for a public review is how you
   buy a one-star.
-- **The row is marked sent immediately after sending**, so a crash mid-run
-  cannot re-send on the next sweep.
+- **Only rows Gmail confirms are marked sent**, straight after the send step.
+  A failed send stays pending and is retried next hour without stopping the
+  rest of the batch. If the sheet write itself fails after sending, those rows
+  can go out again on the next sweep, so keep an eye on failed executions.
 
 ## 04 · Content repurposing
 
@@ -98,7 +107,9 @@ hook, written back to the same sheet.
 
 - **Processed rows are skipped.** Without a status check this reprocesses the
   entire sheet every six hours, and that is a bill that grows quietly until
-  someone notices. Rows under 200 characters never reach the model either.
+  someone notices. Rows marked `needs review` are skipped too, so they wait
+  for a human instead of being re-billed every run; clear the status to send
+  one back through. Rows under 200 characters never reach the model either.
 - **Five rows per run, maximum.** A 300-row backlog should not fire 300 calls
   in one go.
 - **Character limits are enforced in code, not requested in the prompt.** The
@@ -122,9 +133,23 @@ Requires an n8n instance (self-hosted or cloud) on a recent version.
    purpose. Nothing here contains a key, and nothing should.
 3. **Replace the placeholders.** Search each workflow for:
    - `SHEET_ID_HERE`, your Google Sheet ID
-   - `IG_BUSINESS_ID`, set as an n8n environment variable, not pasted inline
    - `#enquiries`, your Slack channel
-4. **Test on pinned data first.** Three of these send real messages to real
+   - `example.com`, the keyword links in Comment to DM, and the review and
+     unsubscribe links in Review request. The unsubscribe link needs something
+     on your side that adds the address to the `suppression` tab.
+4. **Create the sheet tabs.** Header row first, exact names:
+
+   | Tab | Used by | Columns |
+   |---|---|---|
+   | `sent-log` | 01 | `fromId`, `username`, `matched`, `commentId`, `sentAt` |
+   | `enquiries` | 02 | `submittedAt`, `name`, `email`, `brand`, `service`, `fit`, `urgency`, `reason` |
+   | `review-queue` | 03 | `orderId`, `email`, `firstName`, `product`, `timezone`, `deliveredAt`, `sendAfter`, `status`, `sentAt` |
+   | `suppression` | 03 | `email` |
+   | `long-form` | 04 | `rowId`, `title`, `body`, `status`, `instagram`, `linkedin`, `tiktok`, `hashtags`, `generatedAt` |
+
+   Writes use raw cell format, so IDs and dates stay as the text the workflow
+   compares against, rather than being turned into numbers or locale dates.
+5. **Test on pinned data first.** Three of these send real messages to real
    people the moment they fire. Pin sample data onto the trigger node and run
    it manually before you activate anything.
 
@@ -141,8 +166,10 @@ Sample payloads matching each trigger are in [`sample-data/`](sample-data/).
 ## Status
 
 All four workflows are complete and structurally validated: every file parses,
-every connection resolves to a real node, and no workflow has two nodes sharing
-a name.
+every connection resolves to a real node, no workflow has two nodes sharing
+a name, and every node parameter has been checked against the n8n node source
+(n8n-nodes-base 2.15.1). The Code nodes and the wiring between nodes have been
+run against the sample data in a simulator, with the external services mocked.
 
 They have **not yet been run end to end on a live n8n instance.** That pass is
 next, and this paragraph gets deleted when it is done. Structure is not
