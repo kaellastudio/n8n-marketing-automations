@@ -79,7 +79,16 @@
             "hashtags": "={{ $json.hashtags }}",
             "status": "={{ $json.status }}",
             "generatedAt": "={{ $json.generatedAt }}"
-          }
+          },
+          "schema": [
+            { "id": "rowId", "displayName": "rowId", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "instagram", "displayName": "instagram", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "linkedin", "displayName": "linkedin", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "tiktok", "displayName": "tiktok", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "hashtags", "displayName": "hashtags", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "status", "displayName": "status", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "generatedAt", "displayName": "generatedAt", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true }
+          ]
         },
         "options": { "cellFormat": "RAW" }
       },

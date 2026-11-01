@@ -188,7 +188,22 @@ version.
 In those runs, Google Sheets, Gmail, Slack, OpenAI and the Meta Graph API
 were stand-ins built on the real nodes' parameter definitions, so every
 expression was evaluated by n8n itself, but no request reached Google, Slack,
-OpenAI or Meta. **They have not yet been run against live accounts.** The
+OpenAI or Meta.
+
+A second pass ran all four as published workflows on a live n8n 2.45.7
+server, with those services answered by a local stand-in over HTTPS, so the
+real Google Sheets, Gmail, Slack, OpenAI and Graph API nodes made their real
+requests. That pass found two more problems, both fixed:
+
+- **Every Google Sheets write failed on import.** Sheets nodes from v4.4 on
+  need a column schema alongside the mapping. The n8n editor fills it in
+  when a node is opened, so an imported workflow without it fails its first
+  write. Each write node now carries its schema.
+- **A duplicate row in the review queue was emailed every hour.** Mark sent
+  only updates the first matching row, so the duplicate stayed pending. The
+  sweep now skips any order that already has a row marked sent.
+
+**They have not yet been run against live accounts.** The
 first live run of each is the remaining check, and this paragraph gets
 updated when it is done.
 

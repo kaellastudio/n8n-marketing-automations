@@ -117,7 +117,17 @@
             "fit": "={{ $json.fit }}",
             "urgency": "={{ $json.urgency }}",
             "reason": "={{ $json.reason }}"
-          }
+          },
+          "schema": [
+            { "id": "submittedAt", "displayName": "submittedAt", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "name", "displayName": "name", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "email", "displayName": "email", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "brand", "displayName": "brand", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "service", "displayName": "service", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "fit", "displayName": "fit", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "urgency", "displayName": "urgency", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "reason", "displayName": "reason", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true }
+          ]
         },
         "options": { "cellFormat": "RAW" }
       },

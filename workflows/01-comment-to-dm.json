@@ -166,7 +166,14 @@
             "matched": "={{ $json.matched }}",
             "commentId": "={{ $json.commentId }}",
             "sentAt": "={{ $now.toISO() }}"
-          }
+          },
+          "schema": [
+            { "id": "fromId", "displayName": "fromId", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "username", "displayName": "username", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "matched", "displayName": "matched", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "commentId", "displayName": "commentId", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "sentAt", "displayName": "sentAt", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true }
+          ]
         },
         "options": { "cellFormat": "RAW" }
       },

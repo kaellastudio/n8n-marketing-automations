@@ -70,7 +70,17 @@
             "deliveredAt": "={{ $json.deliveredAt }}",
             "sendAfter": "={{ $json.sendAfter }}",
             "status": "={{ $json.status }}"
-          }
+          },
+          "schema": [
+            { "id": "orderId", "displayName": "orderId", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "email", "displayName": "email", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "firstName", "displayName": "firstName", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "product", "displayName": "product", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "timezone", "displayName": "timezone", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "deliveredAt", "displayName": "deliveredAt", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "sendAfter", "displayName": "sendAfter", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "status", "displayName": "status", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true }
+          ]
         },
         "options": { "cellFormat": "RAW" }
       },
@@ -119,7 +129,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Four independent reasons not to send. Each one is a real complaint if you\n// get it wrong, so they are checked explicitly rather than folded into one\n// clever condition.\nconst queue = $('Read queue').all().map(i => i.json);\nconst suppressed = new Set(\n  $('Read suppression list').all()\n    .map(i => String(i.json.email ?? '').trim().toLowerCase())\n    .filter(Boolean)\n);\nconst today = new Date().toISOString().slice(0, 10);\nconst seen = new Set();\nconst out = [];\nfor (const row of queue) {\n  const email = String(row.email ?? '').trim().toLowerCase();\n  const orderId = String(row.orderId ?? '').trim();\n  if (!email || !orderId) continue;\n  if (seen.has(orderId)) continue;                            // a stray duplicate row is sent once, not twice\n  if (String(row.status ?? '') !== 'pending') continue;      // 1. already sent\n  if (suppressed.has(email)) continue;                        // 2. unsubscribed, or already reviewed\n  if (String(row.sendAfter ?? '') > today) continue;          // 3. still inside the wait\n  // 4. Send inside the recipient's waking hours. Their timezone, not ours.\n  let localHour;\n  try {\n    localHour = Number(new Intl.DateTimeFormat('en-GB', {\n      hour: 'numeric', hourCycle: 'h23', timeZone: row.timezone || 'Europe/London'\n    }).format(new Date()));\n  } catch (e) {\n    localHour = 10; // unknown timezone: treat as sendable rather than stranding the row forever\n  }\n  if (localHour < 9 || localHour > 18) continue;\n  seen.add(orderId);\n  out.push({ json: { ...row, orderId, email } });\n}\nreturn out;"
+        "jsCode": "// Four independent reasons not to send. Each one is a real complaint if you\n// get it wrong, so they are checked explicitly rather than folded into one\n// clever condition.\nconst queue = $('Read queue').all().map(i => i.json);\nconst suppressed = new Set(\n  $('Read suppression list').all()\n    .map(i => String(i.json.email ?? '').trim().toLowerCase())\n    .filter(Boolean)\n);\nconst today = new Date().toISOString().slice(0, 10);\n// An order with ANY row already marked sent is done. Mark sent only updates the\n// first matching row, so without this a stray duplicate row stays pending and\n// the same customer is emailed again on every sweep.\nconst alreadySent = new Set(queue\n  .filter(r => String(r.status ?? '') === 'sent')\n  .map(r => String(r.orderId ?? '').trim()));\nconst seen = new Set();\nconst out = [];\nfor (const row of queue) {\n  const email = String(row.email ?? '').trim().toLowerCase();\n  const orderId = String(row.orderId ?? '').trim();\n  if (!email || !orderId) continue;\n  if (seen.has(orderId) || alreadySent.has(orderId)) continue; // a stray duplicate row is sent once, ever\n  if (String(row.status ?? '') !== 'pending') continue;      // 1. already sent\n  if (suppressed.has(email)) continue;                        // 2. unsubscribed, or already reviewed\n  if (String(row.sendAfter ?? '') > today) continue;          // 3. still inside the wait\n  // 4. Send inside the recipient's waking hours. Their timezone, not ours.\n  let localHour;\n  try {\n    localHour = Number(new Intl.DateTimeFormat('en-GB', {\n      hour: 'numeric', hourCycle: 'h23', timeZone: row.timezone || 'Europe/London'\n    }).format(new Date()));\n  } catch (e) {\n    localHour = 10; // unknown timezone: treat as sendable rather than stranding the row forever\n  }\n  if (localHour < 9 || localHour > 18) continue;\n  seen.add(orderId);\n  out.push({ json: { ...row, orderId, email } });\n}\nreturn out;"
       },
       "id": "eligible",
       "name": "Due, opted in, civil hour",
@@ -161,7 +171,12 @@
         "columns": {
           "mappingMode": "defineBelow",
           "matchingColumns": ["orderId"],
-          "value": { "orderId": "={{ $json.orderId }}", "status": "sent", "sentAt": "={{ $now.toISO() }}" }
+          "value": { "orderId": "={{ $json.orderId }}", "status": "sent", "sentAt": "={{ $now.toISO() }}" },
+          "schema": [
+            { "id": "orderId", "displayName": "orderId", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "status", "displayName": "status", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "sentAt", "displayName": "sentAt", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true }
+          ]
         },
         "options": { "cellFormat": "RAW" }
       },
