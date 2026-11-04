@@ -1,5 +1,5 @@
 {
-  "name": "Comment to DM — keyword triggered",
+  "name": "Comment to DM: keyword triggered",
   "nodes": [
     {
       "parameters": {
@@ -26,6 +26,51 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [-240, 120]
+    },
+    {
+      "parameters": { "httpMethod": "GET", "path": "ig-comment", "responseMode": "responseNode", "options": {} },
+      "id": "webhook-ig-verify",
+      "name": "Meta webhook (verify)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-460, -140],
+      "webhookId": "ig-comment-verify",
+      "notes": "Meta calls this once, with GET, when you register the callback URL in the app dashboard, and will not send a single comment until it gets its challenge back. Same path as the POST webhook below."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 },
+          "conditions": [
+            { "id": "mode-subscribe", "leftValue": "={{ $json.query['hub.mode'] }}", "rightValue": "subscribe", "operator": { "type": "string", "operation": "equals" } },
+            { "id": "token-matches", "leftValue": "={{ $json.query['hub.verify_token'] }}", "rightValue": "VERIFY_TOKEN_HERE", "operator": { "type": "string", "operation": "equals" } }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-verify",
+      "name": "Verify token matches",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [-240, -140],
+      "notes": "VERIFY_TOKEN_HERE is a string you make up and also type into the Meta dashboard. It is not a credential, but keep it unguessable."
+    },
+    {
+      "parameters": { "respondWith": "text", "responseBody": "={{ $json.query['hub.challenge'] }}", "options": {} },
+      "id": "respond-challenge",
+      "name": "Return challenge",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [-20, -220]
+    },
+    {
+      "parameters": { "respondWith": "noData", "options": { "responseCode": 403 } },
+      "id": "respond-403",
+      "name": "Reject (403)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [-20, -60]
     },
     {
       "parameters": {
@@ -121,7 +166,14 @@
             "matched": "={{ $json.matched }}",
             "commentId": "={{ $json.commentId }}",
             "sentAt": "={{ $now.toISO() }}"
-          }
+          },
+          "schema": [
+            { "id": "fromId", "displayName": "fromId", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "username", "displayName": "username", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "matched", "displayName": "matched", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "commentId", "displayName": "commentId", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "sentAt", "displayName": "sentAt", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true }
+          ]
         },
         "options": { "cellFormat": "RAW" }
       },
@@ -155,6 +207,8 @@
     }
   ],
   "connections": {
+    "Meta webhook (verify)": { "main": [[{ "node": "Verify token matches", "type": "main", "index": 0 }]] },
+    "Verify token matches": { "main": [[{ "node": "Return challenge", "type": "main", "index": 0 }], [{ "node": "Reject (403)", "type": "main", "index": 0 }]] },
     "Meta webhook (comment)": { "main": [[{ "node": "Ack Meta within 5s", "type": "main", "index": 0 }, { "node": "Flatten and de-echo", "type": "main", "index": 0 }]] },
     "Flatten and de-echo": { "main": [[{ "node": "Match keyword", "type": "main", "index": 0 }]] },
     "Match keyword": { "main": [[{ "node": "Read sent log", "type": "main", "index": 0 }]] },

@@ -1,5 +1,5 @@
 {
-  "name": "Content repurposing — one post, three platforms",
+  "name": "Content repurposing: one post, three platforms",
   "nodes": [
     {
       "parameters": { "rule": { "interval": [{ "field": "hours", "hoursInterval": 6 }] } },
@@ -55,7 +55,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Never trust the model to have obeyed the character limits. It will exceed\n// them, and a caption rejected by the platform at publish time is a failure\n// nobody sees until the slot is missed. Truncate on a word boundary here.\nconst LIMITS = { instagram: 300, linkedin: 600, tiktok: 150 };\nconst clip = (s, n) => {\n  s = String(s ?? '').trim();\n  if (s.length <= n) return s;\n  const cut = s.slice(0, n);\n  return cut.slice(0, Math.max(cut.lastIndexOf(' '), n - 20)).trim();\n};\nconst out = [];\nconst sources = $('Unprocessed and substantial').all();\n$input.all().forEach((item, i) => {\n  const src = sources[i]?.json ?? {};\n  let v = {};\n  try {\n    const raw = item.json.message?.content ?? item.json.content ?? item.json;\n    v = typeof raw === 'string' ? JSON.parse(raw) : raw;\n  } catch (e) { v = {}; }\n  const instagram = clip(v.instagram, LIMITS.instagram);\n  const linkedin  = clip(v.linkedin,  LIMITS.linkedin);\n  const tiktok    = clip(v.tiktok,    LIMITS.tiktok);\n  // A blank platform means the model failed. Flag for review rather than\n  // writing an empty caption into the calendar and calling it done.\n  const incomplete = !instagram || !linkedin || !tiktok;\n  out.push({ json: {\n    rowId: src.rowId, title: src.title,\n    instagram, linkedin, tiktok,\n    hashtags: Array.isArray(v.hashtags) ? v.hashtags.slice(0, 6).join(' ') : '',\n    status: incomplete ? 'needs review' : 'done',\n    generatedAt: new Date().toISOString()\n  }});\n});\nreturn out;"
+        "jsCode": "// Never trust the model to have obeyed the character limits. It will exceed\n// them, and a caption rejected by the platform at publish time is a failure\n// nobody sees until the slot is missed. Truncate on a word boundary here.\nconst LIMITS = { instagram: 300, linkedin: 600, tiktok: 150 };\nconst clip = (s, n) => {\n  s = String(s ?? '').trim();\n  if (s.length <= n) return s;\n  const cut = s.slice(0, n);\n  return cut.slice(0, Math.max(cut.lastIndexOf(' '), n - 20)).trim();\n};\nconst out = [];\nconst sources = $('Unprocessed and substantial').all();\n$input.all().forEach((item, i) => {\n  const src = sources[i]?.json ?? {};\n  let v = {};\n  try {\n    const raw = item.json.message?.content ?? item.json.content ?? item.json;\n    v = typeof raw === 'string' ? JSON.parse(raw) : raw;\n  } catch (e) { v = {}; }\n  const instagram = clip(v.instagram, LIMITS.instagram);\n  const linkedin  = clip(v.linkedin,  LIMITS.linkedin);\n  const tiktok    = clip(v.tiktok,    LIMITS.tiktok);\n  // A blank platform means the model failed. Flag for review rather than\n  // writing an empty caption into the calendar and calling it done.\n  const incomplete = !instagram || !linkedin || !tiktok;\n  // The model returns tags with and without the #, sometimes with spaces or\n  // capitals. Normalise so the sheet holds tags that can be pasted as they are.\n  const tags = [...new Set((Array.isArray(v.hashtags) ? v.hashtags : [])\n    .map(t => String(t ?? '').toLowerCase().replace(/[^\\p{L}\\p{N}_]/gu, ''))\n    .filter(Boolean))].slice(0, 6).map(t => '#' + t).join(' ');\n  out.push({ json: {\n    rowId: src.rowId, title: src.title,\n    instagram, linkedin, tiktok,\n    hashtags: tags,\n    status: incomplete ? 'needs review' : 'done',\n    generatedAt: new Date().toISOString()\n  }});\n});\nreturn out;"
       },
       "id": "enforce",
       "name": "Enforce limits, flag failures",
@@ -79,7 +79,16 @@
             "hashtags": "={{ $json.hashtags }}",
             "status": "={{ $json.status }}",
             "generatedAt": "={{ $json.generatedAt }}"
-          }
+          },
+          "schema": [
+            { "id": "rowId", "displayName": "rowId", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "instagram", "displayName": "instagram", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "linkedin", "displayName": "linkedin", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "tiktok", "displayName": "tiktok", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "hashtags", "displayName": "hashtags", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "status", "displayName": "status", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "generatedAt", "displayName": "generatedAt", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true }
+          ]
         },
         "options": { "cellFormat": "RAW" }
       },
